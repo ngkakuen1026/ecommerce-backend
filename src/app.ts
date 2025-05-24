@@ -1,7 +1,9 @@
 import express, { Application, Request, Response } from 'express';
+import cookieParser from "cookie-parser";
 import dotenv from 'dotenv';
 import userRoutes from "./routes/userRoutes";
 import authRoutes from "./routes/authRoutes";
+
 
 dotenv.config();
 
@@ -13,6 +15,7 @@ app.use(express.json());
 //Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser()); 
 
 // Base API path
 const API_BASE_PATH = "/api/v1";

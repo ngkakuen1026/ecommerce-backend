@@ -9,7 +9,7 @@ const generateAccessToken = (userPayload: object) => {
     if (!process.env.ACCESS_TOKEN_SECRET) {
         throw new Error("ACCESS_TOKEN_SECRET is not defined");
     }
-    return jwt.sign(userPayload, process.env.ACCESS_TOKEN_SECRET, { expiresIn: "1m" });
+    return jwt.sign(userPayload, process.env.ACCESS_TOKEN_SECRET, { expiresIn: "15m" });
 };
 
 const generateRefreshToken = (userPayload: object) => {
@@ -47,42 +47,40 @@ const registerUser = async (req: Request, res: Response): Promise<any> => {
 
         res.status(201).json({ message: `User ${username} registered successfully` });
         console.log(`User ${username} inserted to DB`); 
-    } catch (err) {
-        console.error(err);
+    } catch (error) {
+        console.error(error);
         res.status(500).json({ message: "Internal Server Error" });
     }
 };
 
-// Login user
+// User Login
 const loginUser = async (req: Request, res: Response): Promise<any> => {
-    const { username, password } = req.body;
+    const { email, password } = req.body;
 
     try {
-        const userResult = await pool.query("SELECT * FROM users WHERE username = $1", [username]);
+        const userResult = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
 
         if (userResult.rows.length === 0) {
             return res.status(404).json({ message: "User not found" });
         }
 
         const user = userResult.rows[0];
-        console.log(`User found: ${user.username}`);
-        console.log(`User password hash: ${user.password_hash}`);
         const passwordMatch = await bcrypt.compare(password, user.password_hash);
 
         if (!passwordMatch) {
             return res.status(400).json({ message: "Incorrect password" });
         }
 
-        const { user_id, username: userUsername } = user;
+        const { id, username: userUsername, email: userEmail } = user;
 
-        const accessToken = generateAccessToken({ user_id, username: userUsername });
-        const refreshToken = generateRefreshToken({ user_id, username: userUsername });
+        const accessToken = generateAccessToken({ id, username: userUsername, email: userEmail });
+        const refreshToken = generateRefreshToken({ id, username: userUsername, email: userEmail });
 
         // Replace old refresh token and store the new one in the database
-        await pool.query("DELETE FROM refresh_tokens WHERE user_id = $1", [user_id]);
+        await pool.query("DELETE FROM refresh_tokens WHERE user_id = $1", [id]);
         await pool.query(
             "INSERT INTO refresh_tokens (token, user_id, expired_at) VALUES ($1, $2, $3)",
-            [refreshToken, user_id, new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)]
+            [refreshToken, id, new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)]
         );
 
         res.cookie("refreshToken", refreshToken, {
@@ -99,10 +97,72 @@ const loginUser = async (req: Request, res: Response): Promise<any> => {
             message: `User ${userUsername} logged in successfully`,
             accessToken,
         });
-    } catch (err) {
-        console.error(err);
+    } catch (error) {
+        console.error(error);
         res.status(500).json({ message: "Internal Server Error" });
     }
 };
 
-export { registerUser, loginUser };
+// User Logout
+const logoutUser = async (req: Request, res: Response): Promise<any> => {
+    try {
+        const refreshToken = req.cookies.refreshToken;
+
+        console.log(`${refreshToken} received from client`);
+
+        if (!refreshToken) {
+            return res.status(400).json({ message: "No refresh token provided" });
+        }
+
+        await pool.query("DELETE FROM refresh_tokens WHERE token = $1", [refreshToken]);
+
+        res.clearCookie("refreshToken", {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "lax",
+        });
+
+        console.log("User logged out successfully");
+        res.status(200).json({ message: "User logged out successfully" });
+    } catch (error) {
+        console.error("Logout error:", error);
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+};
+
+// Refresh Token
+const refreshToken = async (req: Request, res: Response): Promise<any> => {
+    const refreshToken = req.cookies.refreshToken;  
+
+    if (!refreshToken) {
+        return res.status(401).json({ message: "No refresh token provided" });
+    }
+
+    try {
+        const result = await pool.query("SELECT * FROM refresh_tokens WHERE token = $1", [refreshToken]);
+        if (result.rows.length === 0) {
+            return res.status(403).json({ message: "Invalid refresh token" });
+        }
+
+        const storedToken = result.rows[0];
+
+        if (new Date(storedToken.expired_at) < new Date()) {
+            await pool.query("DELETE FROM refresh_tokens WHERE token = $1", [refreshToken]);
+            return res.status(403).json({ message: "Refresh token expired" });
+        }
+
+        jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET!, (error: any, user: any) => {
+            if (error) {
+                console.error("Token verification error:", error);
+                return res.status(403).json({ message: "Invalid refresh token" }); 
+            }
+
+            const accessToken = generateAccessToken({ id: user.id, username: user.username, email: user.email });
+            res.status(200).json({ accessToken });
+        });
+    } catch (error) {
+        console.error("Error during token verification:", error);
+    }
+}
+
+export { registerUser, loginUser, logoutUser, refreshToken };
