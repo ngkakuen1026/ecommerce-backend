@@ -1,6 +1,8 @@
 import pool from "../db/db"
 import bcrypt from "bcrypt";
 import { Request, Response } from 'express';
+import cloudinary from "../config/cloudinary";
+import fs from "fs";
 
 // Get all users (admin only)
 const getAllUser = async (req: Request, res: Response) => {
@@ -19,13 +21,13 @@ const getUserProfile = async (req: Request, res: Response) => {
         const userId = req.user!.id;
 
         const user = await pool.query("SELECT * FROM users WHERE id = $1", [userId]);
-        if (user.rows.length === 0) {   
+        if (user.rows.length === 0) {
             res.status(404).json({ message: "User not found" });
         }
 
         res.status(200).json({ user: user.rows[0] });
     } catch (error) {
-        console.error(error);   
+        console.error(error);
         res.status(500).json({ message: "Internal Server Error" });
     }
 }
@@ -87,7 +89,7 @@ const updateUserPassword = async (req: Request, res: Response) => {
             "UPDATE users SET password_hash = $1 WHERE id = $2",
             [hashedPassword, userId]
         );
-        
+
         res.status(200).json({ message: "Password updated successfully" });
     } catch (error) {
         console.error(error);
@@ -95,4 +97,51 @@ const updateUserPassword = async (req: Request, res: Response) => {
     }
 };
 
-export { getAllUser, getUserProfile, updateUserProfile, updateUserPassword };
+//Upload user image
+const uploadUserImage = async (req: Request, res: Response) => {
+    try {
+        const userId = req.user!.id;
+
+        if (!req.file) {
+            res.status(400).json({ message: "No file uploaded" });
+            return;
+        }
+
+        const current = await pool.query("SELECT * FROM users WHERE id = $1",[userId]);
+
+        if (current.rows.length === 0) {
+            fs.unlinkSync(req.file.path);
+
+            res.status(404).json({message: "User not found"});
+            return;
+        }
+
+        const cloudinaryResult = await cloudinary.uploader.upload(req.file.path, {
+            folder: "user_images",
+            use_filename: true,
+            unique_filename: false
+        });
+
+        fs.unlinkSync(req.file.path);
+
+        const updateResult = await pool.query(
+            "UPDATE users SET profile_image = $1 WHERE id = $2 RETURNING *",
+            [cloudinaryResult.secure_url, userId]
+        );
+
+        res.status(200).json({
+            message: "Image uploaded and user updated successfully",
+            user: updateResult.rows[0]
+        });
+    } catch (error) {
+        console.error("Upload error:", error);
+
+        if (req.file && fs.existsSync(req.file.path)) {
+            fs.unlinkSync(req.file.path);
+        }
+
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+};
+
+export { getAllUser, getUserProfile, updateUserProfile, updateUserPassword, uploadUserImage };

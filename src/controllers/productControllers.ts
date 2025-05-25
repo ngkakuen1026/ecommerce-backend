@@ -1,5 +1,7 @@
 import pool from "../db/db"
 import { Request, Response } from 'express';
+import cloudinary from "../config/cloudinary";
+import fs from "fs";
 
 // Get all products (public)
 const getAllProducts = async (req: Request, res: Response) => {
@@ -144,4 +146,52 @@ const searchProducts = async (req: Request, res: Response) => {
     }
 }
 
-export { getAllProducts, getUserProducts, getProductById, createProduct, updateProduct, deleteProduct, searchProducts };
+//Upload product image with cloudinary (registered user)
+const uploadProductImage = async (req: Request, res: Response) => {
+    const userId = req.user!.id;
+    const productId = parseInt(req.params.id);
+
+    if (!req.file) {
+        res.status(400).json({ message: "No file uploaded" });
+        return;
+    }
+
+    try {
+        const current = await pool.query(
+            "SELECT * FROM products WHERE id = $1 AND user_id = $2",
+            [productId, userId]
+        );
+
+        if (current.rows.length === 0) {
+            fs.unlinkSync(req.file.path);
+            res.status(403).json({ message: "You do not have permission to update this product" });
+            return;
+        }
+
+        const cloudinaryResult = await cloudinary.uploader.upload(req.file.path, {
+            folder: "product_images",
+        });
+
+        fs.unlinkSync(req.file.path);
+
+        const updateResult = await pool.query(
+            "UPDATE products SET image_url = $1 WHERE id = $2 AND user_id = $3 RETURNING *",
+            [cloudinaryResult.secure_url, productId, userId]
+        );
+
+        res.status(200).json({
+            message: "Image uploaded and product updated successfully",
+            product: updateResult.rows[0]
+        });
+    } catch (error) {
+        console.error("Upload error:", error);
+
+        if (req.file && fs.existsSync(req.file.path)) {
+            fs.unlinkSync(req.file.path);
+        }
+
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+};
+
+export { getAllProducts, getUserProducts, getProductById, createProduct, updateProduct, deleteProduct, searchProducts, uploadProductImage };
