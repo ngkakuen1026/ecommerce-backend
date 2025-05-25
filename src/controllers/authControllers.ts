@@ -71,10 +71,11 @@ const loginUser = async (req: Request, res: Response): Promise<any> => {
             return res.status(400).json({ message: "Incorrect password" });
         }
 
-        const { id, username: userUsername, email: userEmail } = user;
+        const { id, username: userUsername, email: userEmail, is_admin: isAdmin } = user;
+        console.log(`Type of ID in payload: ${typeof id}`);
 
-        const accessToken = generateAccessToken({ id, username: userUsername, email: userEmail });
-        const refreshToken = generateRefreshToken({ id, username: userUsername, email: userEmail });
+        const accessToken = generateAccessToken({ id, username: userUsername, email: userEmail, is_admin: isAdmin});
+        const refreshToken = generateRefreshToken({ id, username: userUsername, email: userEmail, is_admin: isAdmin });
 
         // Replace old refresh token and store the new one in the database
         await pool.query("DELETE FROM refresh_tokens WHERE user_id = $1", [id]);
@@ -157,7 +158,7 @@ const refreshToken = async (req: Request, res: Response): Promise<any> => {
                 return res.status(403).json({ message: "Invalid refresh token" }); 
             }
 
-            const accessToken = generateAccessToken({ id: user.id, username: user.username, email: user.email });
+            const accessToken = generateAccessToken({ id: user.id, username: user.username, email: user.email, is_admin: user.is_admin });
             res.status(200).json({ accessToken });
         });
     } catch (error) {

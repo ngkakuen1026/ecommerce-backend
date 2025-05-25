@@ -1,14 +1,14 @@
 import { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
+import { JwtPayload } from "../types/JwtPayLoad";
 
 declare global {
   namespace Express {
     interface Request {
-      user?: any; 
+      user?: JwtPayload;
     }
   }
 }
-
 const isAuthenticated = (req: Request, res: Response, next: NextFunction): void => {
   const authHeader = req.headers["authorization"] as string | undefined;
   const token = authHeader && authHeader.split(" ")[1];
@@ -33,7 +33,7 @@ const isAuthenticated = (req: Request, res: Response, next: NextFunction): void 
       return; 
     }
 
-    req.user = user; 
+    req.user = user as JwtPayload; 
     next(); 
   });
 };

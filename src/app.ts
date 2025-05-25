@@ -3,7 +3,8 @@ import cookieParser from "cookie-parser";
 import dotenv from 'dotenv';
 import userRoutes from "./routes/userRoutes";
 import authRoutes from "./routes/authRoutes";
-
+import productsRoutes from "./routes/productRoutes";
+import categoriesRoutes from "./routes/categoriesRoutes";
 
 dotenv.config();
 
@@ -23,6 +24,8 @@ const API_BASE_PATH = "/api/v1";
 // Routes
 app.use(`${API_BASE_PATH}/users`, userRoutes);
 app.use(`${API_BASE_PATH}/auth`, authRoutes);
+app.use(`${API_BASE_PATH}/products`, productsRoutes);
+app.use(`${API_BASE_PATH}/categories`, categoriesRoutes);
 
 app.get("/health", (req: Request, res: Response) => {
     res.status(200).send({ message: "Server is healthy!" });

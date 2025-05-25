@@ -16,7 +16,7 @@ const getAllUser = async (req: Request, res: Response) => {
 // Get user profile
 const getUserProfile = async (req: Request, res: Response) => {
     try {
-        const userId = req.user.id;
+        const userId = req.user!.id;
 
         const user = await pool.query("SELECT * FROM users WHERE id = $1", [userId]);
         if (user.rows.length === 0) {   
@@ -33,7 +33,7 @@ const getUserProfile = async (req: Request, res: Response) => {
 // Update user profile
 const updateUserProfile = async (req: Request, res: Response) => {
     try {
-        const userId = req.user.id;
+        const userId = req.user!.id;
         const current = await pool.query("SELECT * FROM users WHERE id = $1", [userId]);
         if (current.rows.length === 0) {
             res.status(404).json({ message: "User not found" });
@@ -65,7 +65,7 @@ const updateUserProfile = async (req: Request, res: Response) => {
 // Update user password
 const updateUserPassword = async (req: Request, res: Response) => {
     try {
-        const userId = req.user.id;
+        const userId = req.user!.id;
         const { oldPassword, newPassword } = req.body;
 
         const current = await pool.query("SELECT * FROM users WHERE id = $1", [userId]);
