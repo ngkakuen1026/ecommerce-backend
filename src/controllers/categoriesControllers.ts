@@ -34,7 +34,7 @@ const createCategory = async (req: Request, res: Response) => {
 };
 
 const updateCategory = async (req: Request, res: Response) => {
-    const categoryId = parseInt(req.params.id);
+    const categoryId = parseInt(req.params.categoryId);
     const { name } = req.body;
 
     try {
@@ -56,7 +56,7 @@ const updateCategory = async (req: Request, res: Response) => {
 }
 
 const deleteCategory = async (req: Request, res: Response) => {
-    const categoryId = parseInt(req.params.id);
+    const categoryId = parseInt(req.params.categoryId);
 
     try {
         const current = await pool.query("SELECT * FROM categories WHERE id = $1", [categoryId]);

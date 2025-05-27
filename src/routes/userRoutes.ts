@@ -6,10 +6,10 @@ import upload from '../middleware/multer';
 
 const router = express.Router();
 
-router.get("/get-all", isAuthenticated, isAdmin, getAllUser);
-router.get("/my-profile", isAuthenticated, getUserProfile);
-router.put("/update-profile", isAuthenticated, updateUserProfile);
-router.put("/update-password", isAuthenticated, updateUserPassword); 
-router.post("/profile-image", isAuthenticated, upload.single("profile_image"), uploadUserImage);
+router.get("/admin/all-users", isAuthenticated, isAdmin, getAllUser);
+router.get("/me", isAuthenticated, getUserProfile);
+router.put("/me/update", isAuthenticated, updateUserProfile);
+router.put("/me/password/update", isAuthenticated, updateUserPassword); 
+router.post("/me/profile-image", isAuthenticated, upload.single("profile_image"), uploadUserImage);
 
 export default router;

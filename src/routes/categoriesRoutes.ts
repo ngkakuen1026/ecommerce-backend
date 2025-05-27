@@ -6,8 +6,8 @@ import { isAdmin } from '../middleware/isAdmin';
 const router = express.Router();
 
 router.get("/", getAllCategories);
-router.post("/add", isAuthenticated, isAdmin, createCategory);
-router.put("/:id/update", isAuthenticated, isAdmin, updateCategory);
-router.delete("/:id/delete", isAuthenticated, isAdmin, deleteCategory);
+router.post("/create", isAuthenticated, isAdmin, createCategory);
+router.put("/:categoryId/update", isAuthenticated, isAdmin, updateCategory);
+router.delete("/:categoryId/delete", isAuthenticated, isAdmin, deleteCategory);
 
 export default router;

@@ -6,7 +6,7 @@ import upload from '../middleware/multer';
 const router = express.Router();
 
 router.get("/", getAllProducts);
-router.get("/user-products", isAuthenticated, getUserProducts);
+router.get("/me", isAuthenticated, getUserProducts);
 router.get("/search", searchProducts);
 router.get("/:id", getProductById);
 router.post("/create", isAuthenticated, createProduct);
