@@ -42,7 +42,17 @@ const getProductById = async (req: Request, res: Response) => {
             res.status(404).json({ message: "Product not found" });
             return;
         }
-        res.status(200).json({ product: result.rows[0] });
+
+        const product = result.rows[0];
+
+        const imageResult = await pool.query(
+            "SELECT id, image_url FROM product_images WHERE product_id = $1",
+            [productId]
+        );
+
+        product.images = imageResult.rows;
+
+        res.status(200).json({ product: product });
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: "Internal Server Error" });
@@ -52,12 +62,12 @@ const getProductById = async (req: Request, res: Response) => {
 //Create a new product (registered user)
 const createProduct = async (req: Request, res: Response) => {
     const userId = req.user!.id;
-    const { title, categoryId, description, price, image_url, quantity, status } = req.body;
+    const { title, categoryId, description, price, quantity, status } = req.body;
 
     try {
         const result = await pool.query(
-            "INSERT INTO products (user_id, category_id, title, description, price, image_url, quantity, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *",
-            [userId, categoryId, title, description, price, image_url, quantity, status]
+            "INSERT INTO products (user_id, category_id, title, description, price, quantity, status) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *",
+            [userId, categoryId, title, description, price, quantity, status]
         );
 
         res.status(201).json({ product: result.rows[0] });
@@ -66,7 +76,6 @@ const createProduct = async (req: Request, res: Response) => {
         res.status(500).json({ message: "Internal Server Error" });
     }
 }
-
 
 //Update product (registered user)
 const updateProduct = async (req: Request, res: Response) => {
@@ -89,14 +98,13 @@ const updateProduct = async (req: Request, res: Response) => {
             category_id = product.category_id,
             description = product.description,
             price = product.price,
-            image_url = product.image_url,
             quantity = product.quantity,
             status = product.status
         } = req.body;
 
         const result = await pool.query(
-            "UPDATE products SET title = $1, category_id = $2, description = $3, price = $4, image_url = $5, quantity = $6, status = $7 WHERE id = $8 AND user_id = $9 RETURNING *",
-            [title, category_id, description, price, image_url, quantity, status, productId, userId]
+            "UPDATE products SET title = $1, category_id = $2, description = $3, price = $4, quantity = $5, status = $6 WHERE id = $7 AND user_id = $8 RETURNING *",
+            [title, category_id, description, price, quantity, status, productId, userId]
         );
 
         res.status(200).json({ product: result.rows[0] });
@@ -127,7 +135,7 @@ const deleteProduct = async (req: Request, res: Response) => {
 //Search products by title (public)
 const searchProducts = async (req: Request, res: Response) => {
     const { query } = req.query;
-    
+
     if (!query) {
         res.status(400).json({ message: "Search query is required" });
         return;
@@ -147,12 +155,13 @@ const searchProducts = async (req: Request, res: Response) => {
 }
 
 //Upload product image with cloudinary (registered user)
-const uploadProductImage = async (req: Request, res: Response) => {
+const uploadProductImages = async (req: Request, res: Response) => {
     const userId = req.user!.id;
     const productId = parseInt(req.params.id);
+    const files = req.files as Express.Multer.File[];
 
-    if (!req.file) {
-        res.status(400).json({ message: "No file uploaded" });
+    if (!files || files.length === 0) {
+        res.status(400).json({ message: "No images uploaded" });
         return;
     }
 
@@ -163,35 +172,46 @@ const uploadProductImage = async (req: Request, res: Response) => {
         );
 
         if (current.rows.length === 0) {
-            fs.unlinkSync(req.file.path);
-            res.status(403).json({ message: "You do not have permission to update this product" });
+            files.forEach(file => fs.unlinkSync(file.path));
+            res.status(403).json({ message: "Unauthorized to update this product" });
             return;
         }
 
-        const cloudinaryResult = await cloudinary.uploader.upload(req.file.path, {
-            folder: "product_images",
+        const uploadedImages = [];
+
+        for (const file of files) {
+            const result = await cloudinary.uploader.upload(file.path, {
+                folder: "product_images",
+            });
+
+            fs.unlinkSync(file.path);
+
+            const insertQuery = await pool.query(
+                "INSERT INTO product_images (product_id, image_url) VALUES ($1, $2) RETURNING *",
+                [productId, result.secure_url]
+            );
+
+            uploadedImages.push(insertQuery.rows[0]);
+        }
+
+        res.status(201).json({
+            message: "Images uploaded successfully",
+            images: uploadedImages
         });
 
-        fs.unlinkSync(req.file.path);
-
-        const updateResult = await pool.query(
-            "UPDATE products SET image_url = $1 WHERE id = $2 AND user_id = $3 RETURNING *",
-            [cloudinaryResult.secure_url, productId, userId]
-        );
-
-        res.status(200).json({
-            message: "Image uploaded and product updated successfully",
-            product: updateResult.rows[0]
-        });
     } catch (error) {
         console.error("Upload error:", error);
 
-        if (req.file && fs.existsSync(req.file.path)) {
-            fs.unlinkSync(req.file.path);
+        if (files) {
+            files.forEach(file => {
+                if (fs.existsSync(file.path)) {
+                    fs.unlinkSync(file.path);
+                }
+            });
         }
 
         res.status(500).json({ message: "Internal Server Error" });
     }
 };
 
-export { getAllProducts, getUserProducts, getProductById, createProduct, updateProduct, deleteProduct, searchProducts, uploadProductImage };
+export { getAllProducts, getUserProducts, getProductById, createProduct, updateProduct, deleteProduct, searchProducts, uploadProductImages };

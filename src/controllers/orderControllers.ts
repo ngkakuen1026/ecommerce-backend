@@ -26,12 +26,12 @@ const createOrder = async (req: Request, res: Response) => {
 
       const product = current.rows[0];
       if (!product) {
-        res.status(404).json({ message: "Product with ID" + item.product_id + "not found"});
+        res.status(404).json({ message: "Product with ID" + item.product_id + "not found" });
         return;
       }
 
       if (product.quantity < item.quantity) {
-        res.status(400).json({ message: `Insufficient stock for product ID ${item.product_id}`});
+        res.status(400).json({ message: `Insufficient stock for product ID ${item.product_id}` });
         return;
       }
 
@@ -77,62 +77,91 @@ const createOrder = async (req: Request, res: Response) => {
 
 // Get current user's orders
 const getMyOrders = async (req: Request, res: Response) => {
-    const userId = req.user!.id;
+  const userId = req.user!.id;
 
-    try {
-        const result = await pool.query(
-            "SELECT * FROM orders WHERE user_id = $1 ORDER BY created_at DESC",
-            [userId]
-        );
+  try {
+    const result = await pool.query(
+      "SELECT * FROM orders WHERE user_id = $1 ORDER BY created_at DESC",
+      [userId]
+    );
 
-        res.status(200).json({ userId, orders: result.rows });
+    res.status(200).json({ userId, orders: result.rows });
 
-    } catch (error) {
-        console.error("Error fetching user orders:", error);
-        res.status(500).json({ message: "Internal Server Error" });
-    }
+  } catch (error) {
+    console.error("Error fetching user orders:", error);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
 }
 
 // Get details of specific orders
 const getOrderById = async (req: Request, res: Response) => {
-    const userId = req.user!.id;
-    const orderId = parseInt(req.params.orderId);
+  const userId = req.user!.id;
+  const orderId = parseInt(req.params.orderId);
 
-    try {
-        const orderResult = await pool.query(
-            "SELECT * FROM orders WHERE id = $1 AND user_id = $2",
-            [orderId, userId]
-        );
+  try {
+    const orderResult = await pool.query(
+      "SELECT * FROM orders WHERE id = $1 AND user_id = $2",
+      [orderId, userId]
+    );
 
-        if (orderResult.rows.length === 0) {
-            res.status(404).json({ message: "Order not found" });
-            return;
-        }
+    if (orderResult.rows.length === 0) {
+      res.status(404).json({ message: "Order not found" });
+      return;
+    }
 
-        const itemsResult = await pool.query(
-            `SELECT order_items.*, products.title, products.image_url
+    const itemsResult = await pool.query(
+      `SELECT order_items.*, products.title, products.image_url
             FROM order_items
             JOIN products ON order_items.product_id = products.id
             WHERE order_items.order_id = $1`,
-            [orderId]
-        );
+      [orderId]
+    );
 
-        res.status(200).json({
-            order: orderResult.rows[0],
-            items: itemsResult.rows
-        });
-    } catch (error) {
-        console.error("Error fetching order details:", error);
-        res.status(500).json({ message: "Internal Server Error" });
-    }
+    res.status(200).json({
+      order: orderResult.rows[0],
+      items: itemsResult.rows
+    });
+  } catch (error) {
+    console.error("Error fetching order details:", error);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
 }
 
 // Update order status (e.g., to 'shipped', 'delivered')
 const updateOrderStatus = async (req: Request, res: Response) => {
-    const userId = req.user!.id;
-    const orderId = parseInt(req.params.orderId);
-    const { status } = req.body;
+  const userId = req.user!.id;
+  const orderId = parseInt(req.params.orderId);
+  const { status } = req.body;
+
+  try {
+    // Check if the order belongs to the seller
+    const current = await pool.query(
+      `SELECT order_items.*
+        FROM order_items
+        JOIN products ON order_items.product_id = products.id
+        WHERE order_items.order_id = $1 AND products.user_id = $2`,
+      [orderId, userId]
+    );
+
+    if (current.rows.length === 0) {
+      res.status(403).json({ message: "You do not have permission to update this order" });
+      return;
+    };
+
+    // Update the order status
+    const result = await pool.query(
+      "UPDATE orders SET status = $1 WHERE id = $2 RETURNING *",
+      [status, orderId]
+    )
+    res.status(200).json({
+      message: "Order status updated successfully",
+      order: result.rows[0]
+    });
+  } catch (error) {
+    console.error("Error updating order status:", error);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
 
 }
 
-export { getMyOrders, getOrderById, createOrder };
+export { getMyOrders, getOrderById, createOrder, updateOrderStatus };
