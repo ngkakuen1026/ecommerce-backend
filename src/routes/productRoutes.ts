@@ -13,7 +13,7 @@ router.get("/search", searchProducts);
 router.get("/:id", getProductById);
 router.post("/create", isAuthenticated, createProduct);
 router.post("/:id/images", isAuthenticated, upload.array("images", 10), uploadProductImages);
-router.put("/:id/update", isAuthenticated, updateProduct); 
+router.patch("/:id/update", isAuthenticated, updateProduct); 
 router.delete("/:id/delete", isAuthenticated, deleteProduct);
 
 // Product Reviews Routes

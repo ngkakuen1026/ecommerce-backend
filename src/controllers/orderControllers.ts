@@ -1,10 +1,10 @@
 import pool from "../db/db"
 import { Request, Response } from 'express';
+import stripe from '../utils/stripe';
 
-//Create new order
 const createOrder = async (req: Request, res: Response) => {
-  const userId = req.user!.id; // authenticated user
-  const { items } = req.body; // expected: [{ product_id, quantity }]
+  const userId = req.user!.id;
+  const { items, payment_intent_id } = req.body;
 
   if (!items || !Array.isArray(items) || items.length === 0) {
     res.status(400).json({ message: 'Order must contain at least one item.' });
@@ -12,7 +12,13 @@ const createOrder = async (req: Request, res: Response) => {
   }
 
   try {
-    // Start SQL transaction, if any step fails, rollback to avoid inconsistency
+    const paymentIntent = await stripe.paymentIntents.retrieve(payment_intent_id);
+
+    if (paymentIntent.status !== 'succeeded') {
+      res.status(400).json({ message: 'Payment not successful.' });
+      return;
+    }
+
     await pool.query('BEGIN');
 
     let totalAmount = 0;
@@ -75,7 +81,7 @@ const createOrder = async (req: Request, res: Response) => {
   }
 };
 
-// Get current user's orders
+// Get user's list of orders (buyer)
 const getMyOrders = async (req: Request, res: Response) => {
   const userId = req.user!.id;
 
@@ -87,14 +93,36 @@ const getMyOrders = async (req: Request, res: Response) => {
 
     res.status(200).json({ userId, orders: result.rows });
 
+
   } catch (error) {
     console.error("Error fetching user orders:", error);
     res.status(500).json({ message: "Internal Server Error" });
   }
 }
 
-// Get details of specific orders
-const getOrderById = async (req: Request, res: Response) => {
+// Get user's list of orders (seller)
+const getOrdersAsSeller = async (req: Request, res: Response) => {
+  const sellerId = req.user!.id;
+
+  try {
+    const result = await pool.query(`
+      SELECT DISTINCT orders.*
+      FROM orders
+      JOIN order_items ON orders.id = order_items.order_id
+      JOIN products ON order_items.product_id = products.id
+      WHERE products.user_id = $1
+      ORDER BY orders.created_at DESC
+    `, [sellerId]);
+
+    res.status(200).json({ sellerId, orders: result.rows });
+  } catch (error) {
+    console.error("Error fetching seller orders:", error);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+// Get details of specific orders (buyer)
+const getOrderDetailById = async (req: Request, res: Response) => {
   const userId = req.user!.id;
   const orderId = parseInt(req.params.orderId);
 
@@ -110,10 +138,17 @@ const getOrderById = async (req: Request, res: Response) => {
     }
 
     const itemsResult = await pool.query(
-      `SELECT order_items.*, products.title, products.image_url
-            FROM order_items
-            JOIN products ON order_items.product_id = products.id
-            WHERE order_items.order_id = $1`,
+      `SELECT order_items.*, products.title, pi.image_url
+        FROM order_items
+        JOIN products ON order_items.product_id = products.id
+        LEFT JOIN LATERAL (
+            SELECT image_url
+            FROM product_images
+            WHERE product_id = products.id
+            ORDER BY id ASC
+            LIMIT 1
+        ) pi ON true
+        WHERE order_items.order_id = $1`,
       [orderId]
     );
 
@@ -126,6 +161,46 @@ const getOrderById = async (req: Request, res: Response) => {
     res.status(500).json({ message: "Internal Server Error" });
   }
 }
+
+// Get details of specific orders (seller)
+const getSellerOrderDetails = async (req: Request, res: Response) => {
+  const sellerId = req.user!.id;
+  const orderId = parseInt(req.params.orderId);
+
+  try {
+    const itemsResult = await pool.query(`
+      SELECT order_items.*, products.title, pi.image_url
+      FROM order_items
+      JOIN products ON order_items.product_id = products.id
+            LEFT JOIN LATERAL (
+            SELECT image_url
+            FROM product_images
+            WHERE product_id = products.id
+            ORDER BY id ASC
+            LIMIT 1
+        ) pi ON true
+      WHERE order_items.order_id = $1
+        AND products.user_id = $2
+    `, [orderId, sellerId]);
+
+    if (itemsResult.rows.length === 0) {
+      res.status(403).json({ message: "You do not have any products in this order." });
+      return;
+    }
+
+    const orderResult = await pool.query(`
+      SELECT * FROM orders WHERE id = $1
+    `, [orderId]);
+
+    res.status(200).json({
+      order: orderResult.rows[0],
+      sellerItems: itemsResult.rows
+    });
+  } catch (error) {
+    console.error("Error fetching seller-specific order details:", error);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+};
 
 // Update order status (e.g., to 'shipped', 'delivered')
 const updateOrderStatus = async (req: Request, res: Response) => {
@@ -164,4 +239,4 @@ const updateOrderStatus = async (req: Request, res: Response) => {
 
 }
 
-export { getMyOrders, getOrderById, createOrder, updateOrderStatus };
+export { getMyOrders, getOrderDetailById, getOrdersAsSeller, getSellerOrderDetails, createOrder, updateOrderStatus };
