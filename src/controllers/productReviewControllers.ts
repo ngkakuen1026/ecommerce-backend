@@ -39,7 +39,7 @@ const postProductReview = async (req: Request, res: Response) => {
     const userId = req.user!.id;
     const productId = parseInt(req.params.productId);
 
-    const { rating, comment } = req.body;
+    const { rating, comment, title } = req.body;
 
     if (!rating || !comment) {
         res.status(400).json({ message: "Rating and comment are required" });
@@ -58,8 +58,8 @@ const postProductReview = async (req: Request, res: Response) => {
         }
 
         const result = await pool.query(
-            "INSERT INTO product_reviews (reviewer_id, product_id, rating, comment) VALUES ($1, $2, $3, $4) RETURNING *",
-            [userId, productId, rating, comment]
+            "INSERT INTO product_reviews (reviewer_id, product_id, rating, comment, title) VALUES ($1, $2, $3, $4, $5) RETURNING *",
+            [userId, productId, rating, comment, title]
         );
 
         res.status(201).json({ review: result.rows[0] });

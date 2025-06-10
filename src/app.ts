@@ -8,13 +8,14 @@ import categoriesRoutes from "./routes/categoriesRoutes";
 import orderRoutes from "./routes/orderRoutes";
 import wishlistRoutes from "./routes/wishlistRoutes";
 import paymentRoutes from "./routes/paymentRoutes";
+import cors from 'cors';
 
 dotenv.config();
 
 const app: Application = express();
 const PORT = process.env.PORT;
 
-app.use(express.json());
+app.use(cors({ origin: 'http://localhost:5173' }));
 
 //Middleware
 app.use(express.json());

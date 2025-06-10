@@ -1,6 +1,6 @@
 import express from 'express';
 import { isAuthenticated } from '../middleware/auth';
-import { createProduct, deleteProduct, getAllProducts, getProductById, getUserProducts, searchProducts, updateProduct, uploadProductImages } from '../controllers/productControllers';
+import { createProduct, deleteProduct, getAllProducts, getAllProductsByCategoryId, getProductById, getUserProducts, searchProducts, updateProduct, uploadProductImages } from '../controllers/productControllers';
 import { deleteProductReview, getProductReviews, postProductReview } from '../controllers/productReviewControllers';
 import upload from '../middleware/multer';
 
@@ -8,6 +8,7 @@ const router = express.Router();
 
 // Product Routes
 router.get("/", getAllProducts);
+router.get("/category/:id", getAllProductsByCategoryId);
 router.get("/me", isAuthenticated, getUserProducts);
 router.get("/search", searchProducts);
 router.get("/:id", getProductById);

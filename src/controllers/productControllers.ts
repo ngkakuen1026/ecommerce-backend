@@ -6,9 +6,52 @@ import fs from "fs";
 // Get all products (public)
 const getAllProducts = async (req: Request, res: Response) => {
     try {
-        const result = await pool.query("SELECT * FROM products");
+        const result = await pool.query(`
+      SELECT DISTINCT ON (products.id)
+        products.id,
+        products.user_id,
+        products.category_id,
+        products.title,
+        products.description,
+        products.price,
+        products.quantity,
+        products.status,
+        products.created_at,
+        product_images.image_url
+      FROM products
+      LEFT JOIN product_images
+        ON product_images.product_id = products.id
+      ORDER BY products.id, product_images.id ASC
+    `);
         res.status(200).json({ products: result.rows });
-        console.log(result.rows)
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+};
+
+const getAllProductsByCategoryId = async (req: Request, res: Response) => {
+    const categoryId = parseInt(req.params.id);
+    try {
+        const result = await pool.query(`
+        SELECT DISTINCT ON (products.id)
+            products.id,
+            products.user_id,
+            products.category_id,
+            products.title,
+            products.description,
+            products.price,
+            products.quantity,
+            products.status,
+            products.created_at,
+            product_images.image_url
+        FROM products
+        LEFT JOIN product_images
+            ON product_images.product_id = products.id
+        WHERE products.category_id = $1
+        ORDER BY products.id, product_images.id ASC
+    `, [categoryId])
+        res.status(200).json({ products: result.rows });
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: "Internal Server Error" });
@@ -214,4 +257,4 @@ const uploadProductImages = async (req: Request, res: Response) => {
     }
 };
 
-export { getAllProducts, getUserProducts, getProductById, createProduct, updateProduct, deleteProduct, searchProducts, uploadProductImages };
+export { getAllProducts, getAllProductsByCategoryId, getUserProducts, getProductById, createProduct, updateProduct, deleteProduct, searchProducts, uploadProductImages };

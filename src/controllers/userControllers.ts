@@ -15,6 +15,24 @@ const getAllUser = async (req: Request, res: Response) => {
     }
 };
 
+// Get User by ID ()
+const getUserById = async (req: Request, res: Response) => {
+    const userId = parseInt(req.params.id);
+
+    try {
+        const result = await pool.query("SELECT * FROM users WHERE id = $1", [userId]);
+        if (result.rows.length === 0) {
+            res.status(404).json({ message: "User not found" });
+            return;
+        }
+        res.status(200).json({ users: result.rows });
+        console.log(result.rows);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+}
+
 // Get user profile
 const getUserProfile = async (req: Request, res: Response) => {
     try {
@@ -107,12 +125,12 @@ const uploadUserImage = async (req: Request, res: Response) => {
             return;
         }
 
-        const current = await pool.query("SELECT * FROM users WHERE id = $1",[userId]);
+        const current = await pool.query("SELECT * FROM users WHERE id = $1", [userId]);
 
         if (current.rows.length === 0) {
             fs.unlinkSync(req.file.path);
 
-            res.status(404).json({message: "User not found"});
+            res.status(404).json({ message: "User not found" });
             return;
         }
 
@@ -144,4 +162,4 @@ const uploadUserImage = async (req: Request, res: Response) => {
     }
 };
 
-export { getAllUser, getUserProfile, updateUserProfile, updateUserPassword, uploadUserImage };
+export { getAllUser, getUserById, getUserProfile, updateUserProfile, updateUserPassword, uploadUserImage };
