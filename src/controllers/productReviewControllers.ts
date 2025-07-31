@@ -17,14 +17,15 @@ const getProductReviews = async (req: Request, res: Response) => {
         }
 
         const result = await pool.query(
-            "SELECT * FROM product_reviews WHERE product_id = $1 ORDER BY created_at DESC",
+            `SELECT product_reviews.*,
+                users.username AS reviewer_username,
+                users.profile_image AS reviewer_profile_image
+                FROM product_reviews
+                JOIN users ON product_reviews.reviewer_id = users.id
+                WHERE product_reviews.product_id = $1
+                ORDER BY product_reviews.created_at DESC`,
             [productId]
         );
-
-        // if (result.rows.length === 0) {
-        //     res.status(404).json({ message: "No reviews found for this product" });
-        //     return;
-        // }
 
         res.status(200).json({ productId, reviews: result.rows });
 

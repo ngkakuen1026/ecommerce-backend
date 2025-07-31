@@ -8,15 +8,16 @@ import fs from "fs";
 const getAllUser = async (req: Request, res: Response) => {
     try {
         const result = await pool.query("SELECT * FROM users");
-        res.status(200).json({ users: result.rows });
+        const users = result.rows.map(({ password_hash, ...rest }) => rest);
+        res.status(200).json({ users });
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: "Internal Server Error" });
     }
 };
 
-// Get User by ID ()
-const getUserById = async (req: Request, res: Response) => {
+// Get Specific User by ID (admin only)
+const getSpecificUserById = async (req: Request, res: Response) => {
     const userId = parseInt(req.params.id);
 
     try {
@@ -25,7 +26,27 @@ const getUserById = async (req: Request, res: Response) => {
             res.status(404).json({ message: "User not found" });
             return;
         }
-        res.status(200).json({ users: result.rows });
+
+        const user = { ...result.rows[0], password_hash: undefined };
+        res.status(200).json({ user }); 
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+}
+
+// Get User by ID ()
+const getUsernameById = async (req: Request, res: Response) => {
+    const userId = parseInt(req.params.id);
+
+    try {
+        const result = await pool.query("SELECT * FROM users WHERE id = $1", [userId]);
+        if (result.rows.length === 0) {
+            res.status(404).json({ message: "User not found" });
+            return;
+        }
+        const users = result.rows.map(({ password_hash, ...rest }) => rest);
+        res.status(200).json({ users });
         console.log(result.rows);
     } catch (error) {
         console.error(error);
@@ -36,19 +57,28 @@ const getUserById = async (req: Request, res: Response) => {
 // Get user profile
 const getUserProfile = async (req: Request, res: Response) => {
     try {
-        const userId = req.user!.id;
+        const rawId = req.user?.id;
+        const userId = Number(rawId);
 
-        const user = await pool.query("SELECT * FROM users WHERE id = $1", [userId]);
-        if (user.rows.length === 0) {
-            res.status(404).json({ message: "User not found" });
+        if (!userId || isNaN(userId)) {
+            res.status(400).json({ message: "Invalid user ID in token" });
+            return
         }
 
-        res.status(200).json({ user: user.rows[0] });
+        const result = await pool.query("SELECT * FROM users WHERE id = $1", [userId]);
+
+        if (result.rows.length === 0) {
+            res.status(404).json({ message: "User not found" });
+            return;
+        }
+
+        const { password_hash, ...safeUser } = result.rows[0];
+        res.status(200).json({ user: safeUser });
     } catch (error) {
-        console.error(error);
+        console.error("Error in getUserProfile:", error);
         res.status(500).json({ message: "Internal Server Error" });
     }
-}
+};
 
 // Update user profile
 const updateUserProfile = async (req: Request, res: Response) => {
@@ -91,6 +121,7 @@ const updateUserPassword = async (req: Request, res: Response) => {
         const current = await pool.query("SELECT * FROM users WHERE id = $1", [userId]);
         if (current.rows.length === 0) {
             res.status(404).json({ message: "User not found" });
+            return;
         }
 
         const user = current.rows[0];
@@ -98,6 +129,7 @@ const updateUserPassword = async (req: Request, res: Response) => {
         const isPasswordMatch = await bcrypt.compare(oldPassword, user.password_hash);
         if (!isPasswordMatch) {
             res.status(400).json({ message: "Old password is incorrect" });
+            return;
         }
 
         const saltRounds = 10;
@@ -162,4 +194,4 @@ const uploadUserImage = async (req: Request, res: Response) => {
     }
 };
 
-export { getAllUser, getUserById, getUserProfile, updateUserProfile, updateUserPassword, uploadUserImage };
+export { getAllUser, getSpecificUserById, getUsernameById, getUserProfile, updateUserProfile, updateUserPassword, uploadUserImage };

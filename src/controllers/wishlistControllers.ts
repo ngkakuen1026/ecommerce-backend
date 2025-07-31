@@ -6,15 +6,28 @@ const getWishlist = async (req: Request, res: Response) => {
 
     try {
         const wishlistItems = await pool.query(
-            `SELECT wishlists.id, wishlists.product_id, products.title, products.price, products.image_url 
+            `SELECT 
+                wishlists.id, 
+                wishlists.product_id, 
+                products.title, 
+                products.price,
+                products.status,
+                pi.image_url
             FROM wishlists
             JOIN products ON wishlists.product_id = products.id
+            LEFT JOIN LATERAL (
+                SELECT image_url
+                FROM product_images
+                WHERE product_id = products.id
+                ORDER BY id ASC
+                LIMIT 1
+            ) pi ON true
             WHERE wishlists.user_id = $1`,
             [userId]
         );
 
         if (wishlistItems.rows.length === 0) {
-            res.status(404).json({ message: 'Wishlist is empty.' });
+            res.status(200).json({ message: 'Wishlist is empty.' });
             return;
         }
         console.log(`Fetched wishlist for user ${userId}`);

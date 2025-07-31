@@ -2,12 +2,123 @@ import pool from "../db/db"
 import { Request, Response } from 'express';
 import cloudinary from "../config/cloudinary";
 import fs from "fs";
+import { extractPublicId } from "../utils/extractCloudinaryUrl";
 
 // Get all products (public)
 const getAllProducts = async (req: Request, res: Response) => {
     try {
         const result = await pool.query(`
-      SELECT DISTINCT ON (products.id)
+            SELECT DISTINCT ON (products.id)
+            products.id,
+            products.user_id,
+            products.category_id,
+            products.title,
+            products.description,
+            products.price,
+            products.quantity,
+            products.status,
+            products.created_at,
+            product_images.image_url,
+            users.username,
+            users.profile_image,
+            users.registration_date as users_registration_date
+            FROM products
+            LEFT JOIN product_images ON product_images.product_id = products.id
+            LEFT JOIN users ON users.id = products.user_id
+            ORDER BY products.id, product_images.id ASC
+        `);
+        const products = result.rows.map((row) => ({
+            id: row.id,
+            user_id: row.user_id,
+            category_id: row.category_id,
+            title: row.title,
+            description: row.description,
+            price: row.price,
+            quantity: row.quantity,
+            status: row.status,
+            created_at: row.created_at,
+            image_url: row.image_url,
+            user: {
+                username: row.username,
+                profile_image: row.profile_image
+            },
+        }));
+
+        res.status(200).json({ products });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+};
+
+// Get all products in a specific category
+const getAllProductsByCategoryId = async (req: Request, res: Response) => {
+    const categoryId = parseInt(req.params.id);
+    try {
+        const result = await pool.query(`
+            SELECT DISTINCT ON (products.id)
+            products.id,
+            products.user_id,
+            products.category_id,
+            products.title,
+            products.description,
+            products.price,
+            products.quantity,
+            products.status,
+            products.created_at,
+            product_images.image_url,
+            users.username,
+            users.profile_image
+            FROM products
+            LEFT JOIN product_images ON product_images.product_id = products.id
+            LEFT JOIN users ON users.id = products.user_id
+            WHERE products.category_id = $1
+            ORDER BY products.id, product_images.id ASC
+    `, [categoryId])
+        const products = result.rows.map((row) => ({
+            id: row.id,
+            user_id: row.user_id,
+            category_id: row.category_id,
+            title: row.title,
+            description: row.description,
+            price: row.price,
+            quantity: row.quantity,
+            status: row.status,
+            created_at: row.created_at,
+            image_url: row.image_url,
+            user: {
+                username: row.username,
+                profile_image: row.profile_image
+            },
+        }));
+
+        res.status(200).json({ products });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+}
+
+const getProductByUsername = async (req: Request, res: Response) => {
+    const { username } = req.params;
+
+    try {
+        const userResult = await pool.query(
+            `SELECT id, username, profile_image, registration_date, bio
+       FROM users
+       WHERE username ILIKE $1`,
+            [username]
+        );
+
+        if (userResult.rows.length === 0) {
+            res.status(404).json({ message: "User not found" });
+            return;
+        }
+
+        const user = userResult.rows[0];
+
+        const productResult = await pool.query(
+            `SELECT DISTINCT ON (products.id)
         products.id,
         products.user_id,
         products.category_id,
@@ -19,51 +130,67 @@ const getAllProducts = async (req: Request, res: Response) => {
         products.created_at,
         product_images.image_url
       FROM products
-      LEFT JOIN product_images
-        ON product_images.product_id = products.id
-      ORDER BY products.id, product_images.id ASC
-    `);
-        res.status(200).json({ products: result.rows });
+      LEFT JOIN product_images ON product_images.product_id = products.id
+      WHERE products.user_id = $1
+      ORDER BY products.id ASC, product_images.id ASC`,
+            [user.id]
+        );
+
+        const products = productResult.rows.map((row) => ({
+            id: row.id,
+            user_id: row.user_id,
+            category_id: row.category_id,
+            title: row.title,
+            description: row.description,
+            price: row.price,
+            quantity: row.quantity,
+            status: row.status,
+            created_at: row.created_at,
+            image_url: row.image_url,
+            user: {
+                username: user.username,
+                profile_image: user.profile_image,
+                registration_date: user.registration_date,
+                bio: user.bio || null,
+            },
+        }));
+
+        res.status(200).json({
+            user: {
+                user_id: user.id, //
+                username: user.username,
+                profile_image: user.profile_image,
+                registration_date: user.registration_date,
+                bio: user.bio || null
+            },
+            products,
+        });
     } catch (error) {
-        console.error(error);
+        console.error("Public user profile error:", error);
         res.status(500).json({ message: "Internal Server Error" });
     }
 };
-
-const getAllProductsByCategoryId = async (req: Request, res: Response) => {
-    const categoryId = parseInt(req.params.id);
-    try {
-        const result = await pool.query(`
-        SELECT DISTINCT ON (products.id)
-            products.id,
-            products.user_id,
-            products.category_id,
-            products.title,
-            products.description,
-            products.price,
-            products.quantity,
-            products.status,
-            products.created_at,
-            product_images.image_url
-        FROM products
-        LEFT JOIN product_images
-            ON product_images.product_id = products.id
-        WHERE products.category_id = $1
-        ORDER BY products.id, product_images.id ASC
-    `, [categoryId])
-        res.status(200).json({ products: result.rows });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: "Internal Server Error" });
-    }
-}
 
 //Get product list for specific user (registered user)
 const getUserProducts = async (req: Request, res: Response) => {
     const userId = req.user!.id;
 
     try {
-        const result = await pool.query("SELECT * FROM products WHERE user_id = $1", [userId]);
+        const result = await pool.query(`
+            SELECT 
+                products.*,
+                pi.image_url
+            FROM products
+            LEFT JOIN LATERAL (
+                SELECT image_url
+                FROM product_images
+                WHERE product_id = products.id
+                ORDER BY id ASC
+                LIMIT 1
+            ) pi ON true
+            WHERE products.user_id = $1
+        `, [userId]);
+
         if (result.rows.length === 0) {
             res.status(404).json({ message: "No products found for this user" });
             return;
@@ -80,27 +207,49 @@ const getProductById = async (req: Request, res: Response) => {
     const productId = parseInt(req.params.id);
 
     try {
-        const result = await pool.query("SELECT * FROM products WHERE id = $1", [productId]);
+        const result = await pool.query(
+            `SELECT
+                products.*,
+                users.username,
+                users.profile_image
+            FROM products
+            LEFT JOIN users ON users.id = products.user_id
+            WHERE products.id = $1
+            `, [productId]
+        );
+
         if (result.rows.length === 0) {
             res.status(404).json({ message: "Product not found" });
             return;
         }
 
-        const product = result.rows[0];
+        const {
+            username,
+            profile_image,
+            ...baseProduct
+        } = result.rows[0];
 
         const imageResult = await pool.query(
             "SELECT id, image_url FROM product_images WHERE product_id = $1",
             [productId]
         );
 
-        product.images = imageResult.rows;
+        const product = {
+            ...baseProduct,
+            images: imageResult.rows,
+            user: {
+                username,
+                profile_image
+            },
 
-        res.status(200).json({ product: product });
+        };
+
+        res.status(200).json({ product });
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: "Internal Server Error" });
     }
-}
+};
 
 //Create a new product (registered user)
 const createProduct = async (req: Request, res: Response) => {
@@ -175,6 +324,49 @@ const deleteProduct = async (req: Request, res: Response) => {
     }
 }
 
+// Delete a product image (registered user)
+const deleteProductImage = async (req: Request, res: Response) => {
+    const userId = req.user!.id;
+    const productId = parseInt(req.params.id);
+    const imageId = parseInt(req.params.imageId);
+
+    try {
+        const productResult = await pool.query(
+            "SELECT * FROM products WHERE id = $1 AND user_id = $2",
+            [productId, userId]
+        );
+        if (productResult.rows.length === 0) {
+            res.status(403).json({ message: "Unauthorized to delete image for this product" });
+            return;
+        }
+
+        const imageResult = await pool.query(
+            "SELECT image_url FROM product_images WHERE id = $1 AND product_id = $2",
+            [imageId, productId]
+        );
+        if (imageResult.rows.length === 0) {
+            res.status(404).json({ message: "Image not found" });
+            return;
+        }
+
+        const publicId = extractPublicId(imageResult.rows[0].image_url);
+        if (publicId) {
+            await cloudinary.uploader.destroy(publicId);
+        }
+
+        // Delete from database
+        await pool.query(
+            "DELETE FROM product_images WHERE id = $1 AND product_id = $2",
+            [imageId, productId]
+        );
+
+        res.status(200).json({ message: "Product image deleted successfully" });
+    } catch (error) {
+        console.error("Delete image error:", error);
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+};
+
 //Search products by title (public)
 const searchProducts = async (req: Request, res: Response) => {
     const { query } = req.query;
@@ -185,17 +377,51 @@ const searchProducts = async (req: Request, res: Response) => {
     }
 
     try {
-        const result = await pool.query("SELECT * FROM products WHERE title ILIKE $1", [`%${query}%`]);
-        if (result.rows.length === 0) {
-            res.status(404).json({ message: "No products found" });
-            return;
-        }
-        res.status(200).json({ products: result.rows });
+        const result = await pool.query(
+            `SELECT DISTINCT ON (products.id)
+        products.id,
+        products.user_id,
+        products.category_id,
+        products.title,
+        products.description,
+        products.price,
+        products.quantity,
+        products.status,
+        products.created_at,
+        product_images.image_url,
+        users.username,
+        users.profile_image
+      FROM products
+      LEFT JOIN product_images ON product_images.product_id = products.id
+      LEFT JOIN users ON users.id = products.user_id
+      WHERE products.title ILIKE $1
+      ORDER BY products.id ASC, product_images.id ASC`,
+            [`%${query}%`]
+        );
+
+        const products = result.rows.map((row) => ({
+            id: row.id,
+            user_id: row.user_id,
+            category_id: row.category_id,
+            title: row.title,
+            description: row.description,
+            price: row.price,
+            quantity: row.quantity,
+            status: row.status,
+            created_at: row.created_at,
+            image_url: row.image_url,
+            user: {
+                username: row.username,
+                profile_image: row.profile_image,
+            },
+        }));
+
+        res.status(200).json({ products });
     } catch (error) {
-        console.error(error);
+        console.error("Search error:", error);
         res.status(500).json({ message: "Internal Server Error" });
     }
-}
+};
 
 //Upload product image with cloudinary (registered user)
 const uploadProductImages = async (req: Request, res: Response) => {
@@ -257,4 +483,4 @@ const uploadProductImages = async (req: Request, res: Response) => {
     }
 };
 
-export { getAllProducts, getAllProductsByCategoryId, getUserProducts, getProductById, createProduct, updateProduct, deleteProduct, searchProducts, uploadProductImages };
+export { getAllProducts, getAllProductsByCategoryId, getProductByUsername, getUserProducts, getProductById, createProduct, updateProduct, deleteProduct, searchProducts, uploadProductImages, deleteProductImage };

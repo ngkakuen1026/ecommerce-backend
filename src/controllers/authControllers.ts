@@ -3,7 +3,7 @@ import bcrypt from "bcrypt";
 import pool from "../db/db"
 import { Request, Response } from 'express';
 
-const saltRounds = 10; 
+const saltRounds = 10;
 
 const generateAccessToken = (userPayload: object) => {
     if (!process.env.ACCESS_TOKEN_SECRET) {
@@ -21,7 +21,7 @@ const generateRefreshToken = (userPayload: object) => {
 
 // Register a new user
 const registerUser = async (req: Request, res: Response): Promise<any> => {
-    const { username, email, password, first_name, last_name, phone, gender, bio, profile_image, is_admin} = req.body;
+    const { username, email, password, first_name, last_name, phone, gender, bio, profile_image, is_admin } = req.body;
 
     try {
         console.log("Received registration request:", req.body);
@@ -30,11 +30,11 @@ const registerUser = async (req: Request, res: Response): Promise<any> => {
         const checkEmailResult = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
 
         if (checkUsernameResult.rows.length > 0) {
-            return res.status(400).json({ essage: "Username already registered, please use other username"});
+            return res.status(400).json({ essage: "Username already registered, please use other username" });
         }
 
         if (checkEmailResult.rows.length > 0) {
-            return res.status(400).json({ message: "Email already registered, please use other email"});
+            return res.status(400).json({ message: "Email already registered, please use other email" });
         }
 
         const hashedPassword = await bcrypt.hash(String(password), saltRounds);
@@ -46,7 +46,7 @@ const registerUser = async (req: Request, res: Response): Promise<any> => {
         );
 
         res.status(201).json({ message: `User ${username} registered successfully` });
-        console.log(`User ${username} inserted to DB`); 
+        console.log(`User ${username} inserted to DB`);
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: "Internal Server Error" });
@@ -72,9 +72,8 @@ const loginUser = async (req: Request, res: Response): Promise<any> => {
         }
 
         const { id, username: userUsername, email: userEmail, is_admin: isAdmin } = user;
-        console.log(`Type of ID in payload: ${typeof id}`);
 
-        const accessToken = generateAccessToken({ id, username: userUsername, email: userEmail, is_admin: isAdmin});
+        const accessToken = generateAccessToken({ id, username: userUsername, email: userEmail, is_admin: isAdmin });
         const refreshToken = generateRefreshToken({ id, username: userUsername, email: userEmail, is_admin: isAdmin });
 
         // Replace old refresh token and store the new one in the database
@@ -83,6 +82,13 @@ const loginUser = async (req: Request, res: Response): Promise<any> => {
             "INSERT INTO refresh_tokens (token, user_id, expired_at) VALUES ($1, $2, $3)",
             [refreshToken, id, new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)]
         );
+
+        res.cookie("accessToken", accessToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "lax",
+            maxAge: 15 * 60 * 1000,
+        });
 
         res.cookie("refreshToken", refreshToken, {
             httpOnly: true,
@@ -117,6 +123,12 @@ const logoutUser = async (req: Request, res: Response): Promise<any> => {
 
         await pool.query("DELETE FROM refresh_tokens WHERE token = $1", [refreshToken]);
 
+        res.clearCookie("accessToken", {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "lax"
+        });
+
         res.clearCookie("refreshToken", {
             httpOnly: true,
             secure: process.env.NODE_ENV === "production",
@@ -132,8 +144,8 @@ const logoutUser = async (req: Request, res: Response): Promise<any> => {
 };
 
 // Refresh Token
-const refreshToken = async (req: Request, res: Response): Promise<any> => {
-    const refreshToken = req.cookies.refreshToken;  
+const refreshUserToken = async (req: Request, res: Response): Promise<any> => {
+    const refreshToken = req.cookies.refreshToken;
 
     if (!refreshToken) {
         return res.status(401).json({ message: "No refresh token provided" });
@@ -155,15 +167,23 @@ const refreshToken = async (req: Request, res: Response): Promise<any> => {
         jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET!, (error: any, user: any) => {
             if (error) {
                 console.error("Token verification error:", error);
-                return res.status(403).json({ message: "Invalid refresh token" }); 
+                return res.status(403).json({ message: "Invalid refresh token" });
             }
 
             const accessToken = generateAccessToken({ id: user.id, username: user.username, email: user.email, is_admin: user.is_admin });
-            res.status(200).json({ accessToken });
+
+            res.cookie("accessToken", accessToken, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === "production",
+                sameSite: "lax",
+                maxAge: 15 * 60 * 1000,
+            });
+
+            res.status(200).json({ message: "Token refreshed" });
         });
     } catch (error) {
         console.error("Error during token verification:", error);
     }
 }
 
-export { registerUser, loginUser, logoutUser, refreshToken };
+export { registerUser, loginUser, logoutUser, refreshUserToken };

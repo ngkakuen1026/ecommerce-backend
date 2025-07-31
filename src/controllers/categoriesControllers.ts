@@ -7,7 +7,6 @@ const getAllCategories = async (req: Request, res: Response) => {
     try {
         const result = await pool.query("SELECT * FROM categories");
         res.status(200).json({ categories: result.rows });
-        console.log(result.rows);
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: "Internal Server Error" });

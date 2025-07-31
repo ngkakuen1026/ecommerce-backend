@@ -1,5 +1,5 @@
 import { NextFunction, Request, Response } from "express";
-import jwt from "jsonwebtoken";
+import jwt, { JwtPayload as JWTDecodedPayload, VerifyErrors } from "jsonwebtoken";
 import { JwtPayload } from "../types/JwtPayLoad";
 
 declare global {
@@ -9,33 +9,37 @@ declare global {
     }
   }
 }
-const isAuthenticated = (req: Request, res: Response, next: NextFunction): void => {
-  const authHeader = req.headers["authorization"] as string | undefined;
-  const token = authHeader && authHeader.split(" ")[1];
+
+const isAuthenticated = ( req: Request, res: Response, next: NextFunction): void => {
+  const token = req.cookies.accessToken;
 
   if (!token) {
-    res.status(401).json({ message: "Token is not being sent or null" });
+    res.status(401).json({ message: "No token provided" });
     return;
   }
 
   if (!process.env.ACCESS_TOKEN_SECRET) {
     res.status(500).json({ message: "ACCESS_TOKEN_SECRET is not defined" });
-    return; 
+    return;
   }
 
-  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, user) => {
-    if (err) {
-      if (err.name === "TokenExpiredError") {
-        res.status(401).json({ message: "Access token expired" });
-      } else {
-        res.status(403).json({ message: "Token no longer valid" });
+  jwt.verify(
+    token,
+    process.env.ACCESS_TOKEN_SECRET as string,
+    (err: VerifyErrors | null, decoded: string | JWTDecodedPayload | undefined) => {
+      if (err) {
+        if (err.name === "TokenExpiredError") {
+          res.status(401).json({ message: "Access token expired" });
+        } else {
+          res.status(403).json({ message: "Token no longer valid" });
+        }
+        return;
       }
-      return; 
-    }
 
-    req.user = user as JwtPayload; 
-    next(); 
-  });
+      req.user = decoded as JwtPayload;
+      next();
+    }
+  );
 };
 
 export { isAuthenticated };

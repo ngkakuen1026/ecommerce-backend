@@ -6,31 +6,37 @@ const getUserReviews = async (req: Request, res: Response) => {
     const userId = parseInt(req.params.userId);
 
     try {
-        const current = await pool.query("SELECT id FROM users WHERE id = $1", [userId]);
+        const userCheck = await pool.query("SELECT id FROM users WHERE id = $1", [userId]);
 
-        if (current.rows.length === 0) {
+        if (userCheck.rows.length === 0) {
             res.status(404).json({ message: "User not found" });
             return;
         }
 
         const result = await pool.query(
-            "SELECT * FROM user_reviews WHERE reviewer_id = $1 ORDER BY created_at DESC",
+            `SELECT 
+                user_reviews.*, 
+                users.username AS reviewer_username,
+                users.profile_image AS reviewer_profile_image
+            FROM user_reviews
+            JOIN users ON user_reviews.reviewer_id = users.id
+            WHERE user_reviews.reviewed_user_id = $1
+            ORDER BY user_reviews.created_at DESC`,
             [userId]
         );
 
         res.status(200).json({ userId, reviews: result.rows });
-
     } catch (error) {
         console.error("Error fetching user reviews:", error);
         res.status(500).json({ message: "Internal Server Error" });
     }
-}
+};
 
 const postUserReview = async (req: Request, res: Response) => {
     const reviewerId = req.user!.id; //The one who is posting the review
     const reviewedUserId = parseInt(req.params.userId); //The user being reviewed
 
-    const { rating, comment } = req.body;
+    const { rating, comment, title } = req.body;
 
     if (!rating || !comment) {
         res.status(400).json({ message: "Rating and comment are required" });
@@ -46,8 +52,8 @@ const postUserReview = async (req: Request, res: Response) => {
         }
 
         const result = await pool.query(
-            "INSERT INTO user_reviews (reviewer_id, reviewed_user_id, rating, comment) VALUES ($1, $2, $3, $4) RETURNING *",
-            [reviewerId, reviewedUserId, rating, comment]
+            "INSERT INTO user_reviews (reviewer_id, reviewed_user_id, rating, comment, title) VALUES ($1, $2, $3, $4, $5) RETURNING *",
+            [reviewerId, reviewedUserId, rating, comment, title]
         );
 
         res.status(201).json({
@@ -84,4 +90,4 @@ const deleteUserReview = async (req: Request, res: Response) => {
     }
 }
 
-export { getUserReviews, postUserReview, deleteUserReview}; 
+export { getUserReviews, postUserReview, deleteUserReview }; 
