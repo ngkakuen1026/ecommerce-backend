@@ -1,10 +1,13 @@
-import pool from "../db/db"
+import pool from "../db/db";
 import { Request, Response } from 'express';
 import cloudinary from "../config/cloudinary";
 import fs from "fs";
 import { extractPublicId } from "../utils/extractCloudinaryUrl";
 
-// Get all products (public)
+const calculateDiscountedPrice = (price: number, discount: number): number => {
+    return parseFloat((price - (price * (discount / 100))).toFixed(2));
+};
+
 const getAllProducts = async (req: Request, res: Response) => {
     try {
         const result = await pool.query(`
@@ -18,6 +21,7 @@ const getAllProducts = async (req: Request, res: Response) => {
             products.quantity,
             products.status,
             products.created_at,
+            products.discount,
             product_images.image_url,
             users.username,
             users.profile_image,
@@ -34,13 +38,15 @@ const getAllProducts = async (req: Request, res: Response) => {
             title: row.title,
             description: row.description,
             price: row.price,
+            discount: row.discount,
+            discountedPrice: calculateDiscountedPrice(row.price, row.discount),
             quantity: row.quantity,
             status: row.status,
             created_at: row.created_at,
             image_url: row.image_url,
             user: {
                 username: row.username,
-                profile_image: row.profile_image
+                profile_image: row.profile_image,
             },
         }));
 
@@ -66,6 +72,7 @@ const getAllProductsByCategoryId = async (req: Request, res: Response) => {
             products.quantity,
             products.status,
             products.created_at,
+            products.discount,
             product_images.image_url,
             users.username,
             users.profile_image
@@ -74,7 +81,8 @@ const getAllProductsByCategoryId = async (req: Request, res: Response) => {
             LEFT JOIN users ON users.id = products.user_id
             WHERE products.category_id = $1
             ORDER BY products.id, product_images.id ASC
-    `, [categoryId])
+        `, [categoryId]);
+
         const products = result.rows.map((row) => ({
             id: row.id,
             user_id: row.user_id,
@@ -82,13 +90,15 @@ const getAllProductsByCategoryId = async (req: Request, res: Response) => {
             title: row.title,
             description: row.description,
             price: row.price,
+            discount: row.discount,
+            discountedPrice: calculateDiscountedPrice(row.price, row.discount),
             quantity: row.quantity,
             status: row.status,
             created_at: row.created_at,
             image_url: row.image_url,
             user: {
                 username: row.username,
-                profile_image: row.profile_image
+                profile_image: row.profile_image,
             },
         }));
 
@@ -97,16 +107,17 @@ const getAllProductsByCategoryId = async (req: Request, res: Response) => {
         console.error(error);
         res.status(500).json({ message: "Internal Server Error" });
     }
-}
+};
 
+// Get product by username
 const getProductByUsername = async (req: Request, res: Response) => {
     const { username } = req.params;
 
     try {
         const userResult = await pool.query(
             `SELECT id, username, profile_image, registration_date, bio
-       FROM users
-       WHERE username ILIKE $1`,
+             FROM users
+             WHERE username ILIKE $1`,
             [username]
         );
 
@@ -119,20 +130,21 @@ const getProductByUsername = async (req: Request, res: Response) => {
 
         const productResult = await pool.query(
             `SELECT DISTINCT ON (products.id)
-        products.id,
-        products.user_id,
-        products.category_id,
-        products.title,
-        products.description,
-        products.price,
-        products.quantity,
-        products.status,
-        products.created_at,
-        product_images.image_url
-      FROM products
-      LEFT JOIN product_images ON product_images.product_id = products.id
-      WHERE products.user_id = $1
-      ORDER BY products.id ASC, product_images.id ASC`,
+            products.id,
+            products.user_id,
+            products.category_id,
+            products.title,
+            products.description,
+            products.price,
+            products.quantity,
+            products.status,
+            products.created_at,
+            products.discount,
+            product_images.image_url
+            FROM products
+            LEFT JOIN product_images ON product_images.product_id = products.id
+            WHERE products.user_id = $1
+            ORDER BY products.id ASC, product_images.id ASC`,
             [user.id]
         );
 
@@ -143,6 +155,8 @@ const getProductByUsername = async (req: Request, res: Response) => {
             title: row.title,
             description: row.description,
             price: row.price,
+            discount: row.discount,
+            discountedPrice: calculateDiscountedPrice(row.price, row.discount),
             quantity: row.quantity,
             status: row.status,
             created_at: row.created_at,
@@ -157,7 +171,7 @@ const getProductByUsername = async (req: Request, res: Response) => {
 
         res.status(200).json({
             user: {
-                user_id: user.id, //
+                user_id: user.id,
                 username: user.username,
                 profile_image: user.profile_image,
                 registration_date: user.registration_date,
@@ -171,7 +185,7 @@ const getProductByUsername = async (req: Request, res: Response) => {
     }
 };
 
-//Get product list for specific user (registered user)
+// Get user products
 const getUserProducts = async (req: Request, res: Response) => {
     const userId = req.user!.id;
 
@@ -195,14 +209,30 @@ const getUserProducts = async (req: Request, res: Response) => {
             res.status(404).json({ message: "No products found for this user" });
             return;
         }
-        res.status(200).json({ products: result.rows });
+
+        const products = result.rows.map((row) => ({
+            id: row.id,
+            user_id: row.user_id,
+            category_id: row.category_id,
+            title: row.title,
+            description: row.description,
+            price: row.price,
+            discount: row.discount,
+            discountedPrice: calculateDiscountedPrice(row.price, row.discount),
+            quantity: row.quantity,
+            status: row.status,
+            created_at: row.created_at,
+            image_url: row.image_url,
+        }));
+
+        res.status(200).json({ products });
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: "Internal Server Error" });
     }
-}
+};
 
-//Get specific product by ID (public)
+// Get product by ID
 const getProductById = async (req: Request, res: Response) => {
     const productId = parseInt(req.params.id);
 
@@ -214,8 +244,8 @@ const getProductById = async (req: Request, res: Response) => {
                 users.profile_image
             FROM products
             LEFT JOIN users ON users.id = products.user_id
-            WHERE products.id = $1
-            `, [productId]
+            WHERE products.id = $1`,
+            [productId]
         );
 
         if (result.rows.length === 0) {
@@ -239,9 +269,9 @@ const getProductById = async (req: Request, res: Response) => {
             images: imageResult.rows,
             user: {
                 username,
-                profile_image
+                profile_image,
             },
-
+            discountedPrice: calculateDiscountedPrice(baseProduct.price, baseProduct.discount),
         };
 
         res.status(200).json({ product });
@@ -251,30 +281,33 @@ const getProductById = async (req: Request, res: Response) => {
     }
 };
 
-//Create a new product (registered user)
+// Create a new product
 const createProduct = async (req: Request, res: Response) => {
     const userId = req.user!.id;
-    const { title, categoryId, description, price, quantity, status } = req.body;
+    const { title, categoryId, description, price, quantity, status, discount } = req.body;
 
     try {
         const result = await pool.query(
-            "INSERT INTO products (user_id, category_id, title, description, price, quantity, status) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *",
-            [userId, categoryId, title, description, price, quantity, status]
+            "INSERT INTO products (user_id, category_id, title, description, price, quantity, status, discount) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *",
+            [userId, categoryId, title, description, price, quantity, status, discount]
         );
 
-        res.status(201).json({ product: result.rows[0] });
+        const createdProduct = {
+            ...result.rows[0],
+            discountedPrice: calculateDiscountedPrice(result.rows[0].price, result.rows[0].discount),
+        };
+
+        res.status(201).json({ product: createdProduct });
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: "Internal Server Error" });
     }
-}
+};
 
-//Update product (registered user)
+// Update product
 const updateProduct = async (req: Request, res: Response) => {
     const userId = req.user!.id;
     const productId = parseInt(req.params.id);
-
-    console.log(productId, userId);
 
     try {
         const current = await pool.query("SELECT * FROM products WHERE id = $1 AND user_id = $2", [productId, userId]);
@@ -291,22 +324,28 @@ const updateProduct = async (req: Request, res: Response) => {
             description = product.description,
             price = product.price,
             quantity = product.quantity,
-            status = product.status
+            status = product.status,
+            discount = product.discount,
         } = req.body;
 
         const result = await pool.query(
-            "UPDATE products SET title = $1, category_id = $2, description = $3, price = $4, quantity = $5, status = $6 WHERE id = $7 AND user_id = $8 RETURNING *",
-            [title, category_id, description, price, quantity, status, productId, userId]
+            "UPDATE products SET title = $1, category_id = $2, description = $3, price = $4, quantity = $5, status = $6, discount = $7 WHERE id = $8 AND user_id = $9 RETURNING *",
+            [title, category_id, description, price, quantity, status, discount, productId, userId]
         );
 
-        res.status(200).json({ product: result.rows[0] });
+        const updatedProduct = {
+            ...result.rows[0],
+            discountedPrice: calculateDiscountedPrice(result.rows[0].price, result.rows[0].discount),
+        };
+
+        res.status(200).json({ product: updatedProduct });
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: "Internal Server Error" });
     }
-}
+};
 
-//Delete product (registered user)
+// Delete product
 const deleteProduct = async (req: Request, res: Response) => {
     const userId = req.user!.id;
     const productId = parseInt(req.params.id);
@@ -322,9 +361,9 @@ const deleteProduct = async (req: Request, res: Response) => {
         console.error(error);
         res.status(500).json({ message: "Internal Server Error" });
     }
-}
+};
 
-// Delete a product image (registered user)
+// Delete a product image
 const deleteProductImage = async (req: Request, res: Response) => {
     const userId = req.user!.id;
     const productId = parseInt(req.params.id);
@@ -367,7 +406,7 @@ const deleteProductImage = async (req: Request, res: Response) => {
     }
 };
 
-//Search products by title (public)
+// Search products by title
 const searchProducts = async (req: Request, res: Response) => {
     const { query } = req.query;
 
@@ -379,23 +418,24 @@ const searchProducts = async (req: Request, res: Response) => {
     try {
         const result = await pool.query(
             `SELECT DISTINCT ON (products.id)
-        products.id,
-        products.user_id,
-        products.category_id,
-        products.title,
-        products.description,
-        products.price,
-        products.quantity,
-        products.status,
-        products.created_at,
-        product_images.image_url,
-        users.username,
-        users.profile_image
-      FROM products
-      LEFT JOIN product_images ON product_images.product_id = products.id
-      LEFT JOIN users ON users.id = products.user_id
-      WHERE products.title ILIKE $1
-      ORDER BY products.id ASC, product_images.id ASC`,
+            products.id,
+            products.user_id,
+            products.category_id,
+            products.title,
+            products.description,
+            products.price,
+            products.quantity,
+            products.status,
+            products.created_at,
+            products.discount,
+            product_images.image_url,
+            users.username,
+            users.profile_image
+            FROM products
+            LEFT JOIN product_images ON product_images.product_id = products.id
+            LEFT JOIN users ON users.id = products.user_id
+            WHERE products.title ILIKE $1
+            ORDER BY products.id ASC, product_images.id ASC`,
             [`%${query}%`]
         );
 
@@ -406,6 +446,8 @@ const searchProducts = async (req: Request, res: Response) => {
             title: row.title,
             description: row.description,
             price: row.price,
+            discount: row.discount,
+            discountedPrice: calculateDiscountedPrice(row.price, row.discount), 
             quantity: row.quantity,
             status: row.status,
             created_at: row.created_at,
@@ -423,7 +465,7 @@ const searchProducts = async (req: Request, res: Response) => {
     }
 };
 
-//Upload product image with cloudinary (registered user)
+// Upload product image with Cloudinary
 const uploadProductImages = async (req: Request, res: Response) => {
     const userId = req.user!.id;
     const productId = parseInt(req.params.id);
@@ -483,4 +525,16 @@ const uploadProductImages = async (req: Request, res: Response) => {
     }
 };
 
-export { getAllProducts, getAllProductsByCategoryId, getProductByUsername, getUserProducts, getProductById, createProduct, updateProduct, deleteProduct, searchProducts, uploadProductImages, deleteProductImage };
+export {
+    getAllProducts,
+    getAllProductsByCategoryId,
+    getProductByUsername,
+    getUserProducts,
+    getProductById,
+    createProduct,
+    updateProduct,
+    deleteProduct,
+    searchProducts,
+    uploadProductImages,
+    deleteProductImage
+};

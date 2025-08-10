@@ -97,12 +97,19 @@ const loginUser = async (req: Request, res: Response): Promise<any> => {
             maxAge: 7 * 24 * 60 * 60 * 1000,
         });
 
-        console.log(`User ${userUsername} logged in successfully`)
-        console.log(`User refreshToken: ${refreshToken}`)
-        console.log(`User accessToken: ${accessToken}`)
+        console.log(`User ${userUsername} logged in successfully`);
+        console.log(`User refreshToken: ${refreshToken}`);
+        console.log(`User accessToken: ${accessToken}`);
+
+        // Return the user's information along with the access token
         res.status(200).json({
-            message: `User ${userUsername} logged in successfully`,
+            message: `Welcome back, ${userUsername}!`,
             accessToken,
+            user: {
+                username: userUsername,
+                email: userEmail,
+                isAdmin,
+            },
         });
     } catch (error) {
         console.error(error);

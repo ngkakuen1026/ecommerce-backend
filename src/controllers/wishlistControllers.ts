@@ -1,6 +1,10 @@
 import pool from "../db/db"
 import { Request, Response } from 'express';
 
+const calculateDiscountedPrice = (price: number, discount: number): number => {
+    return parseFloat((price - (price * (discount / 100))).toFixed(2));
+};
+
 const getWishlist = async (req: Request, res: Response) => {
     const userId = req.user!.id;
 
@@ -12,6 +16,7 @@ const getWishlist = async (req: Request, res: Response) => {
                 products.title, 
                 products.price,
                 products.status,
+                products.discount,
                 pi.image_url
             FROM wishlists
             JOIN products ON wishlists.product_id = products.id
@@ -30,17 +35,29 @@ const getWishlist = async (req: Request, res: Response) => {
             res.status(200).json({ message: 'Wishlist is empty.' });
             return;
         }
+
+        const wishlist = wishlistItems.rows.map(item => ({
+            id: item.id,
+            product_id: item.product_id,
+            title: item.title,
+            price: item.price,
+            discount: item.discount,
+            discountedPrice: calculateDiscountedPrice(item.price, item.discount), // Calculate discounted price
+            status: item.status,
+            image_url: item.image_url,
+        }));
+
         console.log(`Fetched wishlist for user ${userId}`);
-        console.log(wishlistItems.rows);
+        console.log(wishlist);
         res.status(200).json({
             userId,
-            wishlist: wishlistItems.rows
+            wishlist
         });
     } catch (error) {
         console.error('Error fetching wishlist:', error);
         res.status(500).json({ message: 'Internal server error.' });
     }
-}
+};
 
 const createWishlist = async (req: Request, res: Response) => {
     const userId = req.user!.id;

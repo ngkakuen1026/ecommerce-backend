@@ -3,6 +3,19 @@ import bcrypt from "bcrypt";
 import { Request, Response } from 'express';
 import cloudinary from "../config/cloudinary";
 import fs from "fs";
+import { extractPublicId } from "../utils/extractCloudinaryUrl";
+
+const getUserLength = async (req: Request, res: Response) => {
+    try {
+        const result = await pool.query("SELECT * FROM users");
+        const users = result.rows.map(({ password_hash, ...rest }) => rest);
+        const usersLength = users.length;
+        res.status(200).json({ usersLength });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+};
 
 // Get all users (admin only)
 const getAllUser = async (req: Request, res: Response) => {
@@ -28,7 +41,7 @@ const getSpecificUserById = async (req: Request, res: Response) => {
         }
 
         const user = { ...result.rows[0], password_hash: undefined };
-        res.status(200).json({ user }); 
+        res.status(200).json({ user });
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: "Internal Server Error" });
@@ -194,4 +207,59 @@ const uploadUserImage = async (req: Request, res: Response) => {
     }
 };
 
-export { getAllUser, getSpecificUserById, getUsernameById, getUserProfile, updateUserProfile, updateUserPassword, uploadUserImage };
+const deleteUserImage = async (req: Request, res: Response) => {
+    const userId = req.user!.id;
+    try {
+        const userResult = await pool.query(
+            "SELECT * FROM users WHERE id = $1",
+            [userId]
+        );
+
+        if (userResult.rows.length === 0) {
+            res.status(403).json({ message: "Unauthorized to delete image for this user" });
+            return;
+        }
+
+        const imageResult = await pool.query(
+            "SELECT profile_image FROM users WHERE id = $1", [userId]
+        )
+
+        if (imageResult.rows.length === 0) {
+            res.status(200).json({ message: "Image not found" })
+            return;
+        }
+
+        const publicId = extractPublicId(imageResult.rows[0].profile_image);
+        if (publicId) {
+            await cloudinary.uploader.destroy(publicId);
+        }
+
+        await pool.query("UPDATE users SET profile_image = NULL WHERE id = $1", [userId]);
+
+        res.status(200).json({ message: "Image deleted successfully" });
+
+    } catch (error) {
+        console.error("Delete image error:", error);
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+}
+
+const deleteOwnUser = async (req: Request, res: Response) => {
+    try {
+        const userId = req.user!.id;
+
+        const result = await pool.query("DELETE FROM users WHERE id = $1 RETURNING *", [userId]);
+
+        if (result.rowCount === 0) {
+            res.status(404).json({ message: "User not found" });
+            return;
+        }
+
+        res.status(200).json({ message: "User account deleted successfully" });
+    } catch (error) {
+        console.error("Error deleting user account:", error);
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+};
+
+export { getAllUser, getUserLength, getSpecificUserById, getUsernameById, getUserProfile, updateUserProfile, updateUserPassword, uploadUserImage, deleteOwnUser, deleteUserImage };

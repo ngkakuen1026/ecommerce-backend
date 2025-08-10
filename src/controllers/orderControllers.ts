@@ -2,6 +2,19 @@ import pool from "../db/db"
 import { Request, Response } from 'express';
 import stripe from '../utils/stripe';
 
+const getOrderLength = async (req: Request, res: Response) => {
+  try {
+    const result = await pool.query("SELECT * FROM orders");
+    const orders = result.rows.map(({ status, ...rest }) => rest);
+    const ordersLength = orders.length;
+
+    console.log("Orders Length:", ordersLength); // Debugging log
+    res.status(200).json({ ordersLength });
+  } catch (error) {
+    console.error("Error fetching order length:", error); // More detailed error logging
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+};
 const createOrder = async (req: Request, res: Response) => {
   const userId = req.user!.id;
   const { items, payment_intent_id } = req.body;
@@ -239,4 +252,4 @@ const updateOrderStatus = async (req: Request, res: Response) => {
 
 }
 
-export { getMyOrders, getOrderDetailById, getOrdersAsSeller, getSellerOrderDetails, createOrder, updateOrderStatus };
+export { getOrderLength, getMyOrders, getOrderDetailById, getOrdersAsSeller, getSellerOrderDetails, createOrder, updateOrderStatus };
