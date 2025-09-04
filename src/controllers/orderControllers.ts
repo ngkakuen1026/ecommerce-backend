@@ -1,20 +1,22 @@
 import pool from "../db/db"
 import { Request, Response } from 'express';
 import stripe from '../utils/stripe';
+import { param } from "express-validator";
 
-const getOrderLength = async (req: Request, res: Response) => {
+const getAllOrderLength = async (req: Request, res: Response) => {
   try {
     const result = await pool.query("SELECT * FROM orders");
     const orders = result.rows.map(({ status, ...rest }) => rest);
     const ordersLength = orders.length;
 
-    console.log("Orders Length:", ordersLength); // Debugging log
+    console.log("Orders Length:", ordersLength);
     res.status(200).json({ ordersLength });
   } catch (error) {
-    console.error("Error fetching order length:", error); // More detailed error logging
+    console.error("Error fetching order length:", error);
     res.status(500).json({ message: "Internal Server Error" });
   }
 };
+
 const createOrder = async (req: Request, res: Response) => {
   const userId = req.user!.id;
   const { items, payment_intent_id } = req.body;
@@ -249,7 +251,22 @@ const updateOrderStatus = async (req: Request, res: Response) => {
     console.error("Error updating order status:", error);
     res.status(500).json({ message: "Internal Server Error" });
   }
-
 }
 
-export { getOrderLength, getMyOrders, getOrderDetailById, getOrdersAsSeller, getSellerOrderDetails, createOrder, updateOrderStatus };
+const getOrderList = async (req: Request, res: Response) => {
+  const userId = parseInt(req.params.userId);
+
+  try {
+    const result = await pool.query(
+      "SELECT * FROM orders WHERE user_id = $1 ORDER BY created_at DESC",
+      [userId]
+    );
+
+    res.status(200).json({ userId, orders: result.rows });
+  } catch (error) {
+    console.error("Error fetching order list:", error);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+}
+
+export { getAllOrderLength, getMyOrders, getOrderDetailById, getOrdersAsSeller, getSellerOrderDetails, createOrder, updateOrderStatus, getOrderList };

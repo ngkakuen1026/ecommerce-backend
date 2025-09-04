@@ -25,7 +25,7 @@ const getUserReviews = async (req: Request, res: Response) => {
             [userId]
         );
 
-        res.status(200).json({ userId, reviews: result.rows });
+        res.status(200).json({ id: userId, reviews: result.rows });
     } catch (error) {
         console.error("Error fetching user reviews:", error);
         res.status(500).json({ message: "Internal Server Error" });

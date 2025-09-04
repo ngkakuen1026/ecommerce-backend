@@ -1,6 +1,10 @@
 import pool from "../db/db"
 import { Request, Response } from 'express';
 
+const calculateDiscountedPrice = (price: number, discount: number): number => {
+    return parseFloat((price - (price * (discount / 100))).toFixed(2));
+};
+
 const getCart = async (req: Request, res: Response) => {
     const userId = req.user?.id;
 
@@ -32,14 +36,11 @@ const getCart = async (req: Request, res: Response) => {
             res.status(200).json({ message: 'Carts is empty.' });
             return;
         }
-
-        console.log(`Fetched cart for user ${userId}`);
-        console.log(cartItems.rows);
         res.status(200).json({
             userId,
             cart: cartItems.rows.map(item => ({
                 ...item,
-                discounted_price: item.discounted_price
+                discountedPrice: calculateDiscountedPrice(item.price, item.discount),
             }))
         });
     } catch (error) {
@@ -91,12 +92,39 @@ const addProductToCart = async (req: Request, res: Response) => {
             "INSERT INTO carts (user_id, product_id, quantity, price_at_time_of_addition, discount) VALUES ($1, $2, $3, $4, $5) RETURNING *",
             [userId, productId, quantity, priceAtTimeOfAddition, discount]
         );
-
-        console.log(`Cart created successfully for user ${userId} with ${quantity} of product ${productId}`);
         res.status(201).json({ message: 'Cart created successfully.', cart: result.rows[0] });
     } catch (error) {
         console.error('Error adding product to cart:', error);
         res.status(500).json({ message: 'Internal server error.' });
     }
 };
-export { getCart, addProductToCart };
+
+const removeFromCart = async (req: Request, res: Response) => {
+    const userId = req.user!.id;
+    const productId = parseInt(req.params.productId);
+
+    if (!productId) {
+        res.status(400).json({ message: 'Product ID is required.' });
+        return;
+    }
+
+    try {
+        const result = await pool.query(
+            "DELETE FROM carts WHERE user_id = $1 AND product_id = $2",
+            [userId, productId]
+        )
+
+
+        if (result.rowCount === 0) {
+            res.status(404).json({ message: 'Product not found in cart.' });
+            return;
+        }
+
+        res.status(200).json({ message: 'Product removed from cart successfully.' });
+    } catch (error) {
+        console.error('Error removing product from wishlist:', error);
+        res.status(500).json({ message: 'Internal server error.' });
+    }
+}
+
+export { getCart, addProductToCart, removeFromCart };

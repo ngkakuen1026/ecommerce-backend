@@ -47,8 +47,6 @@ const getWishlist = async (req: Request, res: Response) => {
             image_url: item.image_url,
         }));
 
-        console.log(`Fetched wishlist for user ${userId}`);
-        console.log(wishlist);
         res.status(200).json({
             userId,
             wishlist
@@ -84,7 +82,6 @@ const createWishlist = async (req: Request, res: Response) => {
             [userId, productId]
         );
 
-        console.log(`Wishlist created successfully for user ${userId} with product ${productId}`);
         res.status(201).json({ message: 'Wishlist created successfully.' });
     } catch (error) {
         console.error('Error creating wishlist:', error);
@@ -113,7 +110,6 @@ const removeFromWishlist = async (req: Request, res: Response) => {
             return;
         }
 
-        console.log(`Product ${productId} removed from wishlist for user ${userId}`);
         res.status(200).json({ message: 'Product removed from wishlist successfully.' });
     } catch (error) {
         console.error('Error removing product from wishlist:', error);
@@ -121,4 +117,56 @@ const removeFromWishlist = async (req: Request, res: Response) => {
     }
 }
 
-export { getWishlist, createWishlist, removeFromWishlist };
+const getUserWishList = async (req: Request, res: Response) => {
+    const userId = parseInt(req.params.userId);
+
+    try {
+        const result = await pool.query(
+            `SELECT 
+                wishlists.id, 
+                wishlists.product_id, 
+                products.title, 
+                products.price,
+                products.status,
+                products.discount,
+                pi.image_url
+            FROM wishlists
+            JOIN products ON wishlists.product_id = products.id
+            LEFT JOIN LATERAL (
+                SELECT image_url
+                FROM product_images
+                WHERE product_id = products.id
+                ORDER BY id ASC
+                LIMIT 1
+            ) pi ON true
+            WHERE wishlists.user_id = $1`,
+            [userId]
+        );
+
+        if (result.rows.length === 0) {
+            res.status(200).json({ message: 'Wishlist is empty.', wishlist: [] });
+            return;
+        }
+
+        const wishlist = result.rows.map(item => ({
+            id: item.id,
+            product_id: item.product_id,
+            title: item.title,
+            price: item.price,
+            discount: item.discount,
+            discountedPrice: calculateDiscountedPrice(item.price, item.discount),
+            status: item.status,
+            image_url: item.image_url,
+        }));
+
+        res.status(200).json({
+            userId,
+            wishlist
+        });
+    } catch (error) {
+        console.error('Error fetching user wishlist:', error);
+        res.status(500).json({ message: 'Internal server error.' });
+    }
+}
+
+export { getWishlist, createWishlist, removeFromWishlist, getUserWishList };

@@ -2,6 +2,7 @@ import pool from "../db/db"
 import { Request, Response } from 'express';
 import cloudinary from "../config/cloudinary";
 import fs from "fs";
+import { extractPublicId } from "../utils/extractCloudinaryUrl";
 
 const getAllCategories = async (req: Request, res: Response) => {
     try {
@@ -94,6 +95,40 @@ const uploadCategoryImage = async (req: Request, res: Response) => {
     }
 }
 
+const deleteCategoryImage = async (req: Request, res: Response) => {
+    const categoryId = parseInt(req.params.categoryId);
+
+    try {
+        const categoryResult = await pool.query(
+            "SELECT * FROM categories WHERE id = $1",
+            [categoryId]
+        )
+
+        if (categoryResult.rows.length === 0) {
+            res.status(404).json({ message: "Category not found" });
+            return;
+        }
+
+        const imageResult = await pool.query(
+            "SELECT image_url FROM categories WHERE id = $1",
+            [categoryId]
+        )
+
+        const publicId = extractPublicId(imageResult.rows[0].image_url);
+        if (publicId) {
+            await cloudinary.uploader.destroy(publicId);
+        }
+
+        await pool.query("UPDATE categories SET image_url = NULL WHERE id = $1", [categoryId]);
+
+        res.status(200).json({ message: "Image deleted successfully" });
+
+    } catch (error) {
+        console.error("Delete image error:", error);
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+}
+
 const updateCategory = async (req: Request, res: Response) => {
     const categoryId = parseInt(req.params.categoryId);
     const { name } = req.body;
@@ -136,5 +171,23 @@ const deleteCategory = async (req: Request, res: Response) => {
     }
 }
 
+const searchCategory = async (req: Request, res: Response) => {
+    const { query } = req.query;
 
-export { getAllCategories, getCategoryById, createCategory, uploadCategoryImage, updateCategory, deleteCategory };
+    if (!query) {
+        res.status(400).json({ message: "Search query is required" });
+        return;
+    }
+
+    try {
+        const result = await pool.query(`SELECT * FROM categories WHERE categories.name ILIKE $1`, [`%${query}%`]);
+        const categories = result.rows;
+        res.status(200).json({ categories });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+}
+
+
+export { getAllCategories, getCategoryById, createCategory, uploadCategoryImage, updateCategory, deleteCategory, searchCategory, deleteCategoryImage };
